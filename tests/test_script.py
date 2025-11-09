@@ -13,8 +13,8 @@ def wait_for_service(url, timeout=15):
     return False
 
 # Example test
-if wait_for_service("http://localhost:8000"):
-    r = requests.get("http://localhost:8000")
+if wait_for_service("http://localhost:8080"):
+    r = requests.get("http://localhost:8080")
     if "Hello World" in r.text:
         print("PASS")
         sys.exit(0)
@@ -24,3 +24,4 @@ if wait_for_service("http://localhost:8000"):
 else:
     print("FAIL: Service not reachable")
     sys.exit(1)
+

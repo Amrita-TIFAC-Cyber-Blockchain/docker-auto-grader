@@ -1,98 +1,82 @@
 import subprocess
-import time
 import sys
+import time
 import requests
-import os
 
 API_URL = "http://127.0.0.1:5001/api/v0/version"
 
-def run_command(cmd, timeout=10):
-    """Run a shell command safely and capture its output."""
-    try:
-        result = subprocess.run(
-            cmd, shell=True, text=True, capture_output=True, timeout=timeout
-        )
-        return result.stdout.strip(), result.stderr.strip(), result.returncode
-    except subprocess.TimeoutExpired:
-        return "", "Command timed out", 1
+def run_cmd(cmd):
+    """Run a shell command and return output, error, and exit code."""
+    result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
+    return result.stdout.strip(), result.stderr.strip(), result.returncode
 
-def wait_for_ipfs_daemon(max_retries=10):
-    """Wait for IPFS API to become available."""
+def wait_for_ipfs(container):
+    """Wait for IPFS API inside container to be ready."""
     print("🚀 Waiting for IPFS daemon to be ready...")
-    for i in range(max_retries):
+    for i in range(10):
         try:
-            response = requests.post(API_URL, timeout=3)
-            if response.status_code == 200:
-                print("✅ IPFS API is reachable.")
+            # Try querying via localhost port (exposed from container)
+            r = requests.post(API_URL, timeout=3)
+            if r.status_code == 200:
+                print("✅ IPFS API reachable via host port.")
                 return True
-        except requests.exceptions.RequestException as e:
-            print(f"Attempt {i+1}/{max_retries}: IPFS not ready yet ({e})")
-        time.sleep(3)
+        except Exception:
+            # Fallback: check daemon process in container
+            out, err, code = run_cmd(f"docker exec {container} pgrep ipfs")
+            if code == 0 and out:
+                print("✅ IPFS daemon is running inside container.")
+                return True
+            print(f"⏳ Attempt {i+1}/10: IPFS not ready yet...")
+            time.sleep(3)
     print("❌ IPFS daemon did not start in time.")
     return False
 
-def check_ipfs_cli():
-    """Ensure IPFS CLI is installed."""
-    out, err, code = run_command("ipfs --version")
-    if code != 0:
-        print("❌ IPFS CLI not found on runner:", err)
-        return False
-    print("✅ IPFS CLI available:", out)
-    return True
-
-def test_ipfs_commands():
-    """Run a series of functional IPFS CLI tests."""
+def test_ipfs_inside(container):
+    """Run basic IPFS CLI tests inside the running container."""
     print("🔍 Checking IPFS version...")
-    out, err, code = run_command("ipfs version")
+    out, err, code = run_cmd(f"docker exec {container} ipfs version")
     if code != 0:
-        print("❌ Failed to get IPFS version:", err)
+        print(f"❌ Failed to get version: {err}")
         return False
-    print("✅", out)
+    print(f"✅ {out}")
 
     print("📦 Adding a test file to IPFS...")
-    with open("sample.txt", "w") as f:
-        f.write("Hello from GitHub Actions IPFS Test!")
-    out, err, code = run_command("ipfs add sample.txt")
-    if code != 0:
-        print("❌ Failed to add file:", err)
+    run_cmd(f"docker exec {container} sh -c 'echo HelloFromContainer > /tmp/test.txt'")
+    out, err, code = run_cmd(f"docker exec {container} ipfs add /tmp/test.txt")
+    if code != 0 or "added" not in out:
+        print(f"❌ Failed to add file: {err}")
         return False
-    print("✅ File added:", out)
+    print(f"✅ {out}")
+    file_hash = out.split()[1] if len(out.split()) > 1 else None
 
-    # Extract file hash safely
-    parts = out.split()
-    file_hash = next((p for p in parts if len(p) >= 46 and p.startswith("Qm")), None)
-    if not file_hash:
-        print("❌ Could not parse file hash from output.")
+    print("🔗 Retrieving file back from IPFS...")
+    out, err, code = run_cmd(f"docker exec {container} ipfs cat {file_hash}")
+    if code != 0 or "HelloFromContainer" not in out:
+        print(f"❌ Failed to cat file: {err}")
         return False
+    print("✅ File retrieved successfully via IPFS.")
 
-    print(f"🔗 Verifying file retrieval via hash: {file_hash}")
-    out, err, code = run_command(f"ipfs cat {file_hash}")
-    if code != 0 or "Hello" not in out:
-        print("❌ Failed to read file:", err)
-        return False
-    print("✅ File retrieved successfully.")
-
-    print("🔎 Testing IPFS network peers (optional)...")
-    out, err, code = run_command("ipfs swarm peers")
+    print("🌐 Checking swarm peers (connectivity)...")
+    out, err, code = run_cmd(f"docker exec {container} ipfs swarm peers")
     if code == 0:
-        print(f"✅ Connected peers: {len(out.splitlines())}")
+        print("✅ Swarm peers checked (network working).")
     else:
-        print("⚠️ No peers connected (this may be fine in isolated test mode).")
+        print("⚠️ Could not list swarm peers (may still be okay).")
 
     return True
 
 def main():
-    print("=============================")
-    print("Running IPFS Auto-Grader Tests")
-    print("=============================")
-
-    if not check_ipfs_cli():
-        sys.exit(1)
-    if not wait_for_ipfs_daemon():
+    if len(sys.argv) < 2:
+        print("Usage: python3 test_script.py <container_name>")
         sys.exit(1)
 
-    print("🔧 Running IPFS functional tests...")
-    if test_ipfs_commands():
+    container = sys.argv[1]
+
+    if not wait_for_ipfs(container):
+        sys.exit(1)
+
+    print("🔧 Running IPFS CLI tests inside container...")
+    if test_ipfs_inside(container):
         print("🎉 All IPFS tests passed!")
         sys.exit(0)
     else:

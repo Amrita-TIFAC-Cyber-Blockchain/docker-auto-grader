@@ -1,0 +1,66 @@
+name: Docker Auto-Grader
+
+on:
+  workflow_dispatch:   # manual trigger from GitHub UI
+  push:
+    branches: [ main ] # optional trigger on push
+
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create logs directory
+        run: mkdir -p logs
+
+      - name: Read student list and run tests
+        run: |
+          while read -r image; do
+            echo "============================="
+            echo "Testing image: $image"
+            echo "============================="
+
+            log_file="logs/${image//\//_}.log"
+
+            # Pull image from Docker Hub
+            if docker pull $image; then
+              echo "Image pulled successfully" >> "$log_file"
+            else
+              echo "FAILED: Unable to pull $image" >> "$log_file"
+              continue
+            fi
+
+            # Run container and test
+            docker run -d -p 8000:8000 --name test_container $image
+            sleep 5
+
+            echo "Running test script..." >> "$log_file"
+            python3 tests/test_script.py >> "$log_file" 2>&1
+            result=$?
+
+            # Stop and clean up
+            docker stop test_container >/dev/null 2>&1
+            docker rm test_container >/dev/null 2>&1
+
+            # Record results
+            if [ $result -eq 0 ]; then
+              echo "✅ PASS - $image" | tee -a "$log_file"
+              echo "$image,PASS" >> results.csv
+            else
+              echo "❌ FAIL - $image" | tee -a "$log_file"
+              echo "$image,FAIL" >> results.csv
+            fi
+
+            echo "" >> "$log_file"
+          done < students.txt
+
+      - name: Upload results as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: grading-results
+          path: |
+            logs/
+            results.csv

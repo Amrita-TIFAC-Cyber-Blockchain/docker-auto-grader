@@ -1,4 +1,5 @@
-# Docker Auto-Grader using GitHub Actions
+# Docker Auto-Grader using GitHub Actions 
+[![Docker Auto-Grader](https://github.com/Amrita-TIFAC-Cyber-Blockchain/docker-auto-grader/actions/workflows/grade.yml/badge.svg?branch=main)](https://github.com/Amrita-TIFAC-Cyber-Blockchain/docker-auto-grader/actions/workflows/grade.yml)
 
 This repository automates the testing and grading of student-submitted Docker images using GitHub Actions.
 All grading runs remotely — no need for Docker Desktop or Docker Engine on your local machine.

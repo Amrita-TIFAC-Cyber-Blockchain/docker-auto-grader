@@ -1,1 +1,14 @@
 adarshrk568/custom-ipfs-node
+adithyans636/ipfs-docker
+agil2004/custom-ipfs-node
+amalpromass/ipfs-node
+darkstorm22/custom-ipfs-node
+anaswarasureshmk/ipfs-docker-node
+lol0lol/docker-ipfs
+cbenu4cys22009/custom-ipfs-node
+aadhithyasiv/ipfstest
+dockerthingy123/ipfsnode
+rishi3161/ipfs-node
+ams7/ipfs-arm64
+charank1904/ipfs-docker-node
+firestrom/ipfs-daemon

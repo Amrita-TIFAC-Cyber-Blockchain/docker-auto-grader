@@ -17,10 +17,18 @@ jobs:
       - name: Create logs directory
         run: mkdir -p logs
 
-      - name: Install dependencies
+      - name: Install IPFS CLI and dependencies
         run: |
+          echo "🔧 Installing IPFS CLI..."
           sudo apt-get update -y
-          sudo apt-get install -y ipfs curl
+          sudo apt-get install -y curl wget tar python3-pip
+
+          IPFS_VERSION="v0.29.0"
+          wget -q https://dist.ipfs.tech/kubo/${IPFS_VERSION}/kubo_${IPFS_VERSION}_linux-amd64.tar.gz
+          tar -xzf kubo_${IPFS_VERSION}_linux-amd64.tar.gz
+          sudo bash kubo/install.sh
+          ipfs version
+
           pip install requests >/dev/null 2>&1
 
       - name: Read student list and run IPFS tests

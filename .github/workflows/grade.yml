@@ -47,7 +47,7 @@ jobs:
 
             # Step 3.2: Run container in detached mode
             echo "▶️ Starting container..." | tee -a "$log_file"
-            container_id=$(docker run -d -p 8000:8000 --name test_container "$image" 2>>"$log_file" || echo "fail")
+            container_id=$(docker run -d -p 8080:8080 --name test_container "$image" 2>>"$log_file" || echo "fail")
 
             if [ "$container_id" = "fail" ] || [ -z "$container_id" ]; then
               echo "❌ Container failed to start" | tee -a "$log_file"

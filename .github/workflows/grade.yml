@@ -1,84 +1,76 @@
 name: Docker Auto-Grader
 
 on:
-  workflow_dispatch:     # Manual trigger from GitHub Actions UI
+  workflow_dispatch:
   push:
-    branches: [ main ]   # Optional automatic trigger
+    branches: [ main ]
 
 jobs:
   grade:
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # Prevent long-running jobs
 
     steps:
-      # Step 1: Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Create logs directory
-      - name: Setup log directories
-        run: |
-          mkdir -p logs
-          echo "image,result" > results.csv
+      - name: Create logs directory
+        run: mkdir -p logs
 
-      # Step 3: Read and process student images
-      - name: Run grading for each student image
+      - name: Read student list and run IPFS tests
         run: |
-          echo "Starting automated Docker grading..."
+          echo "============================="
+          echo "Starting Docker Auto-Grader for IPFS Images"
+          echo "============================="
+
           while read -r image; do
-            echo "============================="
+            echo "--------------------------------------"
             echo "Testing image: $image"
-            echo "============================="
-
-            # Clean previous container (if any)
-            docker rm -f test_container >/dev/null 2>&1 || true
-
+            echo "--------------------------------------"
             log_file="logs/${image//\//_}.log"
-            echo "Log file: $log_file" > "$log_file"
 
-            # Step 3.1: Pull image from Docker Hub
-            if docker pull "$image" >> "$log_file" 2>&1; then
-              echo "✅ Image pulled successfully" | tee -a "$log_file"
+            # Pull the image
+            if docker pull $image >> "$log_file" 2>&1; then
+              echo "✅ Image pulled successfully" >> "$log_file"
             else
-              echo "❌ FAILED: Unable to pull $image" | tee -a "$log_file"
-              echo "$image,FAIL (pull error)" >> results.csv
+              echo "❌ FAILED: Unable to pull $image" >> "$log_file"
+              echo "$image,FAIL" >> results.csv
               continue
             fi
 
-            # Step 3.2: Run container in detached mode
-            echo "▶️ Starting container..." | tee -a "$log_file"
-            container_id=$(docker run -d -p 8080:8080 --name test_container "$image" 2>>"$log_file" || echo "fail")
+            # Start container (with ports)
+            docker run -d --name test_container -p 4001:4001 -p 5001:5001 -p 8080:8080 $image >> "$log_file" 2>&1
 
-            if [ "$container_id" = "fail" ] || [ -z "$container_id" ]; then
-              echo "❌ Container failed to start" | tee -a "$log_file"
-              echo "$image,FAIL (start error)" >> results.csv
-              continue
-            fi
-
-            # Step 3.3: Wait a bit for service startup
-            echo "⏳ Waiting for app to start..." | tee -a "$log_file"
+            # Wait for container startup
+            echo "⏳ Waiting for IPFS container to initialize..." >> "$log_file"
             sleep 10
 
-            # Step 3.4: Run the test script
-            echo "🧪 Running test script..." | tee -a "$log_file"
-            if python3 tests/test_script.py >>"$log_file" 2>&1; then
+            # Copy the test script into the container
+            docker cp tests/test_script.py test_container:/test_script.py >> "$log_file" 2>&1
+
+            # Install Python (if not present)
+            docker exec test_container sh -c "apt-get update && apt-get install -y python3 python3-pip curl" >> "$log_file" 2>&1
+
+            # Run the test script inside the container
+            echo "🔍 Running IPFS tests inside container..." >> "$log_file"
+            docker exec test_container python3 /test_script.py >> "$log_file" 2>&1
+            result=$?
+
+            # Cleanup container
+            docker stop test_container >> "$log_file" 2>&1
+            docker rm test_container >> "$log_file" 2>&1
+
+            # Record result
+            if [ $result -eq 0 ]; then
               echo "✅ PASS - $image" | tee -a "$log_file"
               echo "$image,PASS" >> results.csv
             else
               echo "❌ FAIL - $image" | tee -a "$log_file"
-              echo "$image,FAIL (test failed)" >> results.csv
+              echo "$image,FAIL" >> results.csv
             fi
-
-            # Step 3.5: Stop and clean up container
-            echo "🧹 Cleaning up..." | tee -a "$log_file"
-            docker rm -f test_container >/dev/null 2>&1 || true
             echo "" >> "$log_file"
-
           done < students.txt
 
-      # Step 4: Upload results and logs
-      - name: Upload grading results
-        if: always()
+      - name: Upload results as artifact
         uses: actions/upload-artifact@v4
         with:
           name: grading-results

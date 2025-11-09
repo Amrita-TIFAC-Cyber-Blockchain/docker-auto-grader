@@ -1,63 +1,84 @@
 name: Docker Auto-Grader
 
 on:
-  workflow_dispatch:   # manual trigger from GitHub UI
+  workflow_dispatch:     # Manual trigger from GitHub Actions UI
   push:
-    branches: [ main ] # optional trigger on push
+    branches: [ main ]   # Optional automatic trigger
 
 jobs:
   grade:
     runs-on: ubuntu-latest
+    timeout-minutes: 30  # Prevent long-running jobs
 
     steps:
+      # Step 1: Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create logs directory
-        run: mkdir -p logs
-
-      - name: Read student list and run tests
+      # Step 2: Create logs directory
+      - name: Setup log directories
         run: |
+          mkdir -p logs
+          echo "image,result" > results.csv
+
+      # Step 3: Read and process student images
+      - name: Run grading for each student image
+        run: |
+          echo "Starting automated Docker grading..."
           while read -r image; do
             echo "============================="
             echo "Testing image: $image"
             echo "============================="
 
-            log_file="logs/${image//\//_}.log"
+            # Clean previous container (if any)
+            docker rm -f test_container >/dev/null 2>&1 || true
 
-            # Pull image from Docker Hub
-            if docker pull $image; then
-              echo "Image pulled successfully" >> "$log_file"
+            log_file="logs/${image//\//_}.log"
+            echo "Log file: $log_file" > "$log_file"
+
+            # Step 3.1: Pull image from Docker Hub
+            if docker pull "$image" >> "$log_file" 2>&1; then
+              echo "✅ Image pulled successfully" | tee -a "$log_file"
             else
-              echo "FAILED: Unable to pull $image" >> "$log_file"
+              echo "❌ FAILED: Unable to pull $image" | tee -a "$log_file"
+              echo "$image,FAIL (pull error)" >> results.csv
               continue
             fi
 
-            # Run container and test
-            docker run -d -p 8000:8000 --name test_container $image
-            sleep 5
+            # Step 3.2: Run container in detached mode
+            echo "▶️ Starting container..." | tee -a "$log_file"
+            container_id=$(docker run -d -p 8000:8000 --name test_container "$image" 2>>"$log_file" || echo "fail")
 
-            echo "Running test script..." >> "$log_file"
-            python3 tests/test_script.py >> "$log_file" 2>&1
-            result=$?
+            if [ "$container_id" = "fail" ] || [ -z "$container_id" ]; then
+              echo "❌ Container failed to start" | tee -a "$log_file"
+              echo "$image,FAIL (start error)" >> results.csv
+              continue
+            fi
 
-            # Stop and clean up
-            docker stop test_container >/dev/null 2>&1
-            docker rm test_container >/dev/null 2>&1
+            # Step 3.3: Wait a bit for service startup
+            echo "⏳ Waiting for app to start..." | tee -a "$log_file"
+            sleep 10
 
-            # Record results
-            if [ $result -eq 0 ]; then
+            # Step 3.4: Run the test script
+            echo "🧪 Running test script..." | tee -a "$log_file"
+            if python3 tests/test_script.py >>"$log_file" 2>&1; then
               echo "✅ PASS - $image" | tee -a "$log_file"
               echo "$image,PASS" >> results.csv
             else
               echo "❌ FAIL - $image" | tee -a "$log_file"
-              echo "$image,FAIL" >> results.csv
+              echo "$image,FAIL (test failed)" >> results.csv
             fi
 
+            # Step 3.5: Stop and clean up container
+            echo "🧹 Cleaning up..." | tee -a "$log_file"
+            docker rm -f test_container >/dev/null 2>&1 || true
             echo "" >> "$log_file"
+
           done < students.txt
 
-      - name: Upload results as artifact
+      # Step 4: Upload results and logs
+      - name: Upload grading results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: grading-results

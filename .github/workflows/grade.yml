@@ -8,6 +8,7 @@ on:
 jobs:
   grade:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -16,51 +17,74 @@ jobs:
       - name: Create logs directory
         run: mkdir -p logs
 
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ipfs curl
+          pip install requests >/dev/null 2>&1
+
       - name: Read student list and run IPFS tests
         run: |
           echo "============================="
           echo "Starting Docker Auto-Grader for IPFS Images"
           echo "============================="
 
-          pip install requests >/dev/null 2>&1
+          echo "image,result" > results.csv
 
           while read -r image; do
+            [[ -z "$image" ]] && continue
+
             echo "--------------------------------------"
             echo "Testing image: $image"
             echo "--------------------------------------"
+
             log_file="logs/${image//\//_}.log"
+            container_name="ipfs_test_$(date +%s)"
 
-            # Pull the image
-            if docker pull $image >> "$log_file" 2>&1; then
-              echo "✅ Image pulled successfully" >> "$log_file"
-            else
-              echo "❌ FAILED: Unable to pull $image" >> "$log_file"
-              echo "$image,FAIL" >> results.csv
-              continue
-            fi
+            {
+              echo "🔹 Pulling image: $image"
+              if docker pull "$image"; then
+                echo "✅ Image pulled successfully."
+              else
+                echo "❌ FAILED: Unable to pull image."
+                echo "$image,FAIL" >> results.csv
+                exit 0
+              fi
 
-            # Run container exposing IPFS API
-            docker run -d --name test_container -p 4001:4001 -p 5001:5001 -p 8080:8080 $image >> "$log_file" 2>&1
-            sleep 10
+              echo "🚀 Starting container: $container_name"
+              if ! docker run -d --name "$container_name" \
+                -p 4001:4001 -p 5001:5001 -p 8080:8080 "$image"; then
+                echo "❌ FAILED: Could not start container."
+                echo "$image,FAIL" >> results.csv
+                exit 0
+              fi
 
-            # Run the IPFS test script on the runner (connecting to container)
-            echo "🔍 Running IPFS test script on runner..." >> "$log_file"
-            python3 tests/test_script.py >> "$log_file" 2>&1
-            result=$?
+              echo "⏳ Waiting for container to initialize..."
+              sleep 10
 
-            # Cleanup container
-            docker stop test_container >> "$log_file" 2>&1
-            docker rm test_container >> "$log_file" 2>&1
+              if ! docker ps | grep -q "$container_name"; then
+                echo "❌ Container exited prematurely."
+                docker logs "$container_name" || true
+                echo "$image,FAIL" >> results.csv
+                docker rm -f "$container_name" >/dev/null 2>&1 || true
+                exit 0
+              fi
 
-            # Record result
-            if [ $result -eq 0 ]; then
-              echo "✅ PASS - $image" | tee -a "$log_file"
-              echo "$image,PASS" >> results.csv
-            else
-              echo "❌ FAIL - $image" | tee -a "$log_file"
-              echo "$image,FAIL" >> results.csv
-            fi
-            echo "" >> "$log_file"
+              echo "🔍 Running IPFS test script..."
+              if python3 tests/test_script.py; then
+                echo "✅ PASS - $image"
+                echo "$image,PASS" >> results.csv
+              else
+                echo "❌ FAIL - $image"
+                echo "$image,FAIL" >> results.csv
+              fi
+
+              echo "🧹 Cleaning up..."
+              docker stop "$container_name" >/dev/null 2>&1 || true
+              docker rm "$container_name" >/dev/null 2>&1 || true
+              echo ""
+            } &> "$log_file"
+
           done < students.txt
 
       - name: Upload results as artifact

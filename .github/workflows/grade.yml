@@ -22,6 +22,8 @@ jobs:
           echo "Starting Docker Auto-Grader for IPFS Images"
           echo "============================="
 
+          pip install requests >/dev/null 2>&1
+
           while read -r image; do
             echo "--------------------------------------"
             echo "Testing image: $image"
@@ -37,22 +39,13 @@ jobs:
               continue
             fi
 
-            # Start container (with ports)
+            # Run container exposing IPFS API
             docker run -d --name test_container -p 4001:4001 -p 5001:5001 -p 8080:8080 $image >> "$log_file" 2>&1
-
-            # Wait for container startup
-            echo "⏳ Waiting for IPFS container to initialize..." >> "$log_file"
             sleep 10
 
-            # Copy the test script into the container
-            docker cp tests/test_script.py test_container:/test_script.py >> "$log_file" 2>&1
-
-            # Install Python (if not present)
-            docker exec test_container sh -c "apt-get update && apt-get install -y python3 python3-pip curl" >> "$log_file" 2>&1
-
-            # Run the test script inside the container
-            echo "🔍 Running IPFS tests inside container..." >> "$log_file"
-            docker exec test_container python3 /test_script.py >> "$log_file" 2>&1
+            # Run the IPFS test script on the runner (connecting to container)
+            echo "🔍 Running IPFS test script on runner..." >> "$log_file"
+            python3 tests/test_script.py >> "$log_file" 2>&1
             result=$?
 
             # Cleanup container

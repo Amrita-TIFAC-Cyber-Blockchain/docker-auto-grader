@@ -17,26 +17,11 @@ jobs:
       - name: Create logs directory
         run: mkdir -p logs
 
-      - name: Install IPFS CLI and dependencies
-        run: |
-          echo "🔧 Installing IPFS CLI..."
-          sudo apt-get update -y
-          sudo apt-get install -y curl wget tar python3-pip
-
-          IPFS_VERSION="v0.29.0"
-          wget -q https://dist.ipfs.tech/kubo/${IPFS_VERSION}/kubo_${IPFS_VERSION}_linux-amd64.tar.gz
-          tar -xzf kubo_${IPFS_VERSION}_linux-amd64.tar.gz
-          sudo bash kubo/install.sh
-          ipfs version
-
-          pip install requests >/dev/null 2>&1
-
       - name: Read student list and run IPFS tests
         run: |
           echo "============================="
           echo "Starting Docker Auto-Grader for IPFS Images"
           echo "============================="
-
           echo "image,result" > results.csv
 
           while read -r image; do
@@ -45,7 +30,6 @@ jobs:
             echo "--------------------------------------"
             echo "Testing image: $image"
             echo "--------------------------------------"
-
             log_file="logs/${image//\//_}.log"
             container_name="ipfs_test_$(date +%s)"
 
@@ -54,32 +38,23 @@ jobs:
               if docker pull "$image"; then
                 echo "✅ Image pulled successfully."
               else
-                echo "❌ FAILED: Unable to pull image."
+                echo "❌ FAILED: Unable to pull $image"
                 echo "$image,FAIL" >> results.csv
                 exit 0
               fi
 
               echo "🚀 Starting container: $container_name"
-              if ! docker run -d --name "$container_name" \
-                -p 4001:4001 -p 5001:5001 -p 8080:8080 "$image"; then
+              if ! docker run -d --name "$container_name" -p 4001:4001 -p 5001:5001 -p 8080:8080 "$image"; then
                 echo "❌ FAILED: Could not start container."
                 echo "$image,FAIL" >> results.csv
                 exit 0
               fi
 
-              echo "⏳ Waiting for container to initialize..."
-              sleep 10
-
-              if ! docker ps | grep -q "$container_name"; then
-                echo "❌ Container exited prematurely."
-                docker logs "$container_name" || true
-                echo "$image,FAIL" >> results.csv
-                docker rm -f "$container_name" >/dev/null 2>&1 || true
-                exit 0
-              fi
+              echo "⏳ Waiting for IPFS daemon to start..."
+              sleep 15
 
               echo "🔍 Running IPFS test script..."
-              if python3 tests/test_script.py; then
+              if python3 tests/test_script.py "$container_name"; then
                 echo "✅ PASS - $image"
                 echo "$image,PASS" >> results.csv
               else

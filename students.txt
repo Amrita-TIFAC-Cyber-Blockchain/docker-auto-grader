@@ -9,7 +9,6 @@ cbenu4cys22009/custom-ipfs-node
 aadhithyasiv/ipfstest
 dockerthingy123/ipfsnode
 rishi3161/ipfs-node
-ams7/ipfs-arm64
 charank1904/ipfs-docker-node
 firestrom/ipfs-daemon
 dharshisakthi/my-ipfs

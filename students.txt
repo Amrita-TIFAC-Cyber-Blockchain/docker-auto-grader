@@ -23,7 +23,6 @@ sanjumarri7/custom-ipfs
 mukundkumarappan/ipfs-node
 namitha0710/ipfs_docker
 varshith78/ipfs_img1
-parthivkumarnikku/lab2_ipfs_node
 roopak28/ipfs_node
 narenadithya/ipfs
 rahulshankarv/rahuls-ipfs-node

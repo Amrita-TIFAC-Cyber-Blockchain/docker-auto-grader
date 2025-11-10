@@ -42,6 +42,11 @@ jobs:
             [[ -z "$image" ]] && continue
 
             safe_image_name=$(echo "$image" | tr -d '\r' | tr '/: ' '_' )
+
+            echo "--------------------------------------"
+            echo "Testing image: $image"
+            echo "--------------------------------------"
+            
             log_file="logs/${safe_image_name}.log"
             container_name="dbconnector_test_${safe_image_name}_$(date +%s)"
 

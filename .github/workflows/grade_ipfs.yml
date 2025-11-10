@@ -1,4 +1,4 @@
-name: Docker Auto-Grader
+name: Docker Auto-Grader IPFS
 
 on:
   workflow_dispatch:

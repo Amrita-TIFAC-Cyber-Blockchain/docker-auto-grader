@@ -14,13 +14,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install requests
+
       - name: Create logs directory
         run: mkdir -p logs
 
-      - name: Read student list and run IPFS tests
+      - name: Run Docker Auto-Grader for IPFS Images
         run: |
           echo "============================="
-          echo "Starting Docker Auto-Grader for IPFS Images"
+          echo "🚀 Starting Docker Auto-Grader for IPFS Images"
           echo "============================="
           echo "image,result" > results.csv
 
@@ -53,8 +61,8 @@ jobs:
               echo "⏳ Waiting for IPFS daemon to start..."
               sleep 15
 
-              echo "🔍 Running IPFS test script..."
-              if python3 tests/test_script.py "$container_name"; then
+              echo "🔍 Running IPFS Python test script..."
+              if python3 tests/test_script_ipfs.py "$container_name"; then
                 echo "✅ PASS - $image"
                 echo "$image,PASS" >> results.csv
               else
@@ -68,12 +76,12 @@ jobs:
               echo ""
             } &> "$log_file"
 
-          done < students.txt
+          done < submissions/ipfs.txt
 
-      - name: Upload results as artifact
+      - name: Upload grading results and logs
         uses: actions/upload-artifact@v4
         with:
-          name: grading-results
+          name: ipfs-grading-results
           path: |
-            logs/
             results.csv
+            logs/

@@ -1,0 +1,97 @@
+name: Docker Auto-Grader DB Connector
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install docker requests
+
+      - name: Normalize line endings
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y dos2unix
+          dos2unix submissions/dbconnector.txt
+
+      - name: Create logs directory
+        run: mkdir -p logs
+
+      - name: Run Docker Auto-Grader for DB Connector Images
+        run: |
+          echo "============================="
+          echo "🚀 Starting Docker Auto-Grader for DB Connector Images"
+          echo "============================="
+          echo "image,result" > results.csv
+
+          while IFS= read -r image || [[ -n "$image" ]]; do
+            [[ -z "$image" ]] && continue
+
+            safe_image_name=$(echo "$image" | tr -d '\r' | tr '/: ' '_' )
+            log_file="logs/${safe_image_name}.log"
+            container_name="dbconnector_test_${safe_image_name}_$(date +%s)"
+
+            {
+              echo "🔹 Pulling image: $image"
+              if docker pull "$image"; then
+                echo "✅ Image pulled successfully."
+              else
+                echo "❌ FAILED: Unable to pull $image"
+                echo "$image,FAIL" >> results.csv
+                continue
+              fi
+
+              echo "🚀 Starting container: $container_name"
+              if ! docker run -d --name "$container_name" \
+                -e DB_HOST="dummyhost" \
+                -e DB_PORT="5432" \
+                -e DB_USER="admin" \
+                -e DB_PASS="password" \
+                -e DB_NAME="testdb" \
+                -p 8080:8080 "$image"; then
+                echo "❌ FAILED: Could not start container."
+                echo "$image,FAIL" >> results.csv
+                continue
+              fi
+
+              echo "⏳ Waiting for DB connector app to initialize..."
+              sleep 15
+
+              echo "🔍 Running Python test script..."
+              if python3 tests/test_script_dbconnector.py "$container_name"; then
+                echo "✅ PASS - $image"
+                echo "$image,PASS" >> results.csv
+              else
+                echo "❌ FAIL - $image"
+                echo "$image,FAIL" >> results.csv
+              fi
+
+              echo "🧹 Cleaning up..."
+              docker stop "$container_name" >/dev/null 2>&1 || true
+              docker rm "$container_name" >/dev/null 2>&1 || true
+              echo ""
+            } &> "$log_file"
+
+          done < submissions/dbconnector.txt
+
+      - name: Upload grading results and logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbconnector-grading-results
+          path: |
+            results.csv
+            logs/

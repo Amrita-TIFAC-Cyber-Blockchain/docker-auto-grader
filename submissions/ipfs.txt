@@ -28,7 +28,6 @@ roopak28/ipfs_node
 narenadithya/ipfs
 rahulshankarv/rahuls-ipfs-node
 ramrajs/ipfs-node
-thanujjj/ipfs-node
 mohanvamsi06/lab2_ipfs
 chakri07/custom-ipfs-node
 shravankrishnan/my-ipfs-node
@@ -45,3 +44,4 @@ vichushan/ipfs
 vijaynishanth07/custom-ipfs-node
 vishalyeskay/ipfs-node
 chandan22076/ipfs_node
+
